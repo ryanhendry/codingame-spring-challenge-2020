@@ -121,13 +121,12 @@ class Player {
       List<MoveType> priorityCmd = new ArrayList<>();
       List<MoveType> cmd = new ArrayList<>();
       List<MoveType> superPellets = new ArrayList<>();
-      List<MoveType> two = new ArrayList<>();
       setAllCellsToUnvisited();
       Queue<Pair<Cell, RouteMeta>> queue = new LinkedList<>();
       Cell pacCell = cells[pac.x][pac.y];
       pacCell.setPellet(Optional.empty());
       pacCell.reserved = true;
-      RouteMeta rm = new RouteMeta(0, 0, new ArrayList<>());
+      RouteMeta rm = new RouteMeta(0, new ArrayList<>());
       queue.add(new Pair<>(pacCell, rm));
       boolean danger = false;
       while (!queue.isEmpty()) {
@@ -140,32 +139,30 @@ class Player {
 //          System.err.println(routeMeta);
         }
         if ((routeMeta.steps == 1 || (routeMeta.steps == 2 && pac.speedTurnsLeft > 0)) && pac.abilityCooldown != 0 && cell.danger && turnCount - cell.dangerTurn <= 1 && !beatsOrTies(pac.typeId, cell.dangerType)) {
-          System.err.println(String.format("Pac %d whossed out cell: %s", pac.id, cell));
+          System.err.println(String.format("Pac %d wussed out cell: %s", pac.id, cell));
           continue;
         }
         if ((routeMeta.steps == 1 || (routeMeta.steps == 2 && pac.speedTurnsLeft > 0)) && pac.abilityCooldown != 0 && cell.pac.isPresent() && !cell.pac.get().mine && cell.pac.get().abilityCooldown == 0) {
-          System.err.println(String.format("Pac %d whossed out (enemy could change) cell: %s", pac.id, cell));
+          System.err.println(String.format("Pac %d wussed out (enemy could change) cell: %s", pac.id, cell));
           continue;
         }
         //TODO prioritise pellets over unseen
         if ((cell.pellet.isPresent() || !cell.seen) && !cell.reserved && (!cell.danger || turnCount - cell.dangerTurn > 1  || (turnCount - cell.dangerTurn <= 1 && beatsOrTies(pac.typeId, cell.dangerType)))) {
-
+          RouteMeta rm2 = new RouteMeta(routeMeta);
+          if (routeMeta.steps == 1) {
+            rm2.route.add(cell);
+            rm2.route.add(findAdjacentPellet(cell, pacCell));
+            rm2.steps++;
+          } else {
+            rm2.route.add(cell);
+          }
           if (cell.pellet.isPresent() && cell.pellet.get().value == 10 && superPacs.get(cell) != null && superPacs.get(cell) == pac.id) {
-            RouteMeta rm2 = new RouteMeta(routeMeta);
-            if (routeMeta.steps == 1) {
-              rm2.route.add(cell);
-              rm2.route.add(findAdjacentPellet(cell));
-              rm2.steps++;
-              rm2.total++;
-            } else {
-              rm2.route.add(cell);
-            }
             superPellets.add(new Move(pac.id, rm2));
           }
-          if (routeMeta.steps == 2 && routeMeta.total > 1) {
-            two.add(new Move(pac.id, routeMeta));
+          if (cell.x == 13 && cell.y == 10) {
+            System.err.println(rm2);
           }
-          cmd.add(new Move(pac.id, routeMeta));
+          cmd.add(new Move(pac.id, rm2));
         }
         if (cell.pac.isPresent() && !cell.pac.get().mine && beats(pac.typeId, cell.pac.get().typeId) && routeMeta.steps == 1 && cell.pac.get().abilityCooldown > 1) {
           routeMeta.route.add(cell);
@@ -192,15 +189,11 @@ class Player {
           aggressiveStance(pac, priorityCmd, cell);
           break;
         }
-        if (cell.pac.isPresent() && !cell.pac.get().isMine() && routeMeta.steps == 1 && pac.abilityCooldown == 0 && cell.pac.get().abilityCooldown == 0) {
-          sneakyStance(pac, priorityCmd);
-          break;
-        }
         if (cell.pac.isPresent() && !cell.pac.get().isMine() && routeMeta.steps == 2 && pac.abilityCooldown == 0 && cell.pac.get().abilityCooldown == 0 && !beats(pac.typeId, cell.pac.get().typeId) && routeMeta.route.get(1).pellet.isPresent()) {
           List<Cell> currentPos = new ArrayList<>();
           currentPos.add(pacCell);
           currentPos.add(pacCell);
-          Move move = new Move(pac.id, new RouteMeta(0, 0, currentPos));
+          Move move = new Move(pac.id, new RouteMeta(0, currentPos));
           priorityCmd.add(move);
           break;
         }
@@ -208,31 +201,33 @@ class Player {
           continue;
         }
         List<Cell> cellsToQueue = new ArrayList<>();
+        Cell leftCell;
+        Cell rightCell;
         if (cell.x == 0) {
-          Cell leftWrappedCell = cells[level.width - 1][cell.y];
-          cellsToQueue.add(leftWrappedCell);
+          leftCell = cells[level.width - 1][cell.y];
         } else {
-          Cell leftCell = cells[cell.x - 1][cell.y];
-          cellsToQueue.add(leftCell);
+          leftCell = cells[cell.x - 1][cell.y];
         }
         if (cell.x == level.width - 1) {
-          Cell rightWrappedCell = cells[0][cell.y];
-          cellsToQueue.add(rightWrappedCell);
+          rightCell = cells[0][cell.y];
         } else {
-          Cell rightCell = cells[cell.x + 1][cell.y];
-          cellsToQueue.add(rightCell);
+          rightCell = cells[cell.x + 1][cell.y];
         }
         Cell downCell = cells[cell.x][cell.y + 1];
         Cell upCell = cells[cell.x][cell.y - 1];
-        cellsToQueue.add(downCell);
-        cellsToQueue.add(upCell);
+        if ( (pac.id & 1) == 0 ) {
+          cellsToQueue.add(rightCell);
+          cellsToQueue.add(leftCell);
+          cellsToQueue.add(downCell);
+          cellsToQueue.add(upCell);
+        } else {
+          cellsToQueue.add(leftCell);
+          cellsToQueue.add(rightCell);
+          cellsToQueue.add(upCell);
+          cellsToQueue.add(downCell);
+        }
         routeMeta.steps += 1;
         routeMeta.route.add(cell);
-        if (cell.pellet.isPresent()) {
-          routeMeta.total++;
-        } else if (!cell.seen) {
-          routeMeta.total += 1.5;
-        }
         //Collections.shuffle(cellsToQueue);
         for (Cell c: cellsToQueue) {
           boolean myPacWins = !c.pac.isPresent() || pac.abilityCooldown == 0 || beatsOrTies(pac.typeId, c.pac.get().typeId);
@@ -265,21 +260,7 @@ class Player {
           move = (Move) superPellets.get(0);
           Cell lastStop = move.routeMeta.route.get(move.routeMeta.route.size() - 1);
           System.err.println(String.format("Pac %d going to super pellet at %d,%d", pac.id, lastStop.x, lastStop.y));
-        } else if (two.size() > 0 && pac.speedTurnsLeft > 0) {
-          two.sort((a, b) -> {
-            Move m1 = (Move) a;
-            Move m2 = (Move) b;
-            return Double.compare(m2.routeMeta.total, m1.routeMeta.total);
-          });
-          move = (Move) two.get(0);
-          Cell lastStop = move.routeMeta.route.get(move.routeMeta.route.size() - 1);
-          System.err.println(String.format("Pac %d moving two to pellet at %d,%d potential profit: %s", pac.id, lastStop.x, lastStop.y, move.routeMeta.total));
         } else if (cmd.size() > 0){
-          cmd.sort((a, b) -> {
-            Move m1 = (Move) a;
-            Move m2 = (Move) b;
-            return Double.compare(m2.routeMeta.total, m1.routeMeta.total);
-          });
           move = (Move) cmd.get(0);
           Cell lastStop = move.routeMeta.route.get(move.routeMeta.route.size() - 1);
           Cell firstStop;
@@ -288,13 +269,13 @@ class Player {
           } else {
             firstStop = move.routeMeta.route.get(1);
           }
-          System.err.println(String.format("Pac %d moving to pellet at %d,%d (via %d,%d) potential profit: %s", pac.id, lastStop.x, lastStop.y, firstStop.x, firstStop.y, move.routeMeta.total));
+          System.err.println(String.format("Pac %d moving to pellet at %d,%d (via %d,%d)", pac.id, lastStop.x, lastStop.y, firstStop.x, firstStop.y));
         } else {
           System.err.println(String.format("Pac %d staying put, no commands", pac.id));
           List<Cell> currentPos = new ArrayList<>();
           currentPos.add(pacCell);
           currentPos.add(pacCell);
-          move = new Move(pac.id, new RouteMeta(0, 0, currentPos));
+          move = new Move(pac.id, new RouteMeta(0, currentPos));
         }
         Cell reservedCell = move.routeMeta.route.get(1);
         cells[reservedCell.x][reservedCell.y].reserved = true;
@@ -311,16 +292,6 @@ class Player {
   }
 
   private void queueCommand(Pac pac, Cell reservedCell) {
-//    if (previousTargets[pac.id] != null && previousTargets[pac.id].x == reservedCell.x && previousTargets[pac.id].y == reservedCell.y && pac.abilityCooldown == 0) {
-//      if (pac.typeId.equals("ROCK")) {
-//        commands.add(String.format("SWITCH %d %s", pac.id, "PAPER"));
-//      } else if (pac.typeId.equals("SCISSORS")) {
-//        commands.add(String.format("SWITCH %d %s", pac.id, "ROCK"));
-//      } else if (pac.typeId.equals("PAPER")) {
-//        commands.add(String.format("SWITCH %d %s", pac.id, "SCISSORS"));
-//      }
-//      return;
-//    }
     previousTargets.put(pac.id, new Pair<>(cells[pac.x][pac.y], reservedCell));
     commands.add(String.format("MOVE %d %d %d %s", pac.getId(), reservedCell.x, reservedCell.y, pac.id));
   }
@@ -538,7 +509,7 @@ class Player {
     cells[enemyPac.x][enemyPac.y].pac = Optional.of(enemyPac);
   }
 
-  public Cell findAdjacentPellet(Cell superPellet) {
+  public Cell findAdjacentPellet(Cell superPellet, Cell pacCell) {
     System.err.println("BLAH BLAH BLAH: " + superPellet);
     int x = superPellet.x;
     int y = superPellet.y;
@@ -568,7 +539,7 @@ class Player {
         return c;
       }
     }
-    return superPellet;
+    return pacCell;
   }
 
   public void leftPellets(Cell cell, int count) {
@@ -877,18 +848,18 @@ class Player {
 
   private class RouteMeta {
     int steps;
-    double total;
+    //double total;
     List<Cell> route;
 
     public RouteMeta(RouteMeta routeMeta) {
       this.steps = routeMeta.steps;
-      this.total = routeMeta.total;
+      //this.total = routeMeta.total;
       this.route = new ArrayList<>(routeMeta.route);
     }
 
-    public RouteMeta(int steps, int total, List<Cell> route) {
+    public RouteMeta(int steps, List<Cell> route) {
       this.steps = steps;
-      this.total = total;
+      //this.total = total;
       this.route = route;
     }
 
@@ -896,7 +867,7 @@ class Player {
     public String toString() {
       return "RouteMeta{" +
           "steps=" + steps +
-          ", total=" + total +
+          //", total=" + total +
           ", route=" + route +
           '}';
     }
